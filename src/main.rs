@@ -1,20 +1,23 @@
 mod db;
 mod handlers;
-mod jwt_service;
 mod middlewares;
 mod models;
+mod routers;
 mod utils;
 
 use std::env;
 
 use axum::{
     Router, middleware,
-    routing::{delete, get, patch, post},
+    routing::{get, post},
 };
 use tokio::net::TcpListener;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
-use crate::db::{DBpool, connect_db};
+use crate::{
+    db::{DBpool, connect_db},
+    routers::todos::todos_routes,
+};
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -37,12 +40,7 @@ async fn main() {
         .init();
     let public_routes = Router::new()
         .route("/register", post(handlers::auth::register))
-        .route("/login", post(handlers::auth::login))
-        .route("/todos", get(handlers::todos::get_all_todos))
-        .route("/todos/{id}", get(handlers::todos::get_todo_by_id))
-        .route("/todos", post(handlers::todos::create_todo))
-        .route("/todos/{id}", patch(handlers::todos::update_todo))
-        .route("/todos/{id}", delete(handlers::todos::delete_task));
+        .route("/login", post(handlers::auth::login));
 
     let protected_routes = Router::new()
         .route("/profile", get(handlers::user::get_profile))
@@ -50,10 +48,16 @@ async fn main() {
             state.clone(),
             middlewares::auth::auth_middleware,
         ));
-
+    let todos = Router::new()
+        .merge(todos_routes())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            middlewares::auth::auth_middleware,
+        ));
     let app = Router::new()
         .nest("/auth", public_routes)
         .nest("/api", protected_routes)
+        .nest("/api", todos)
         .layer(CorsLayer::permissive())
         .with_state(state)
         .layer(TraceLayer::new_for_http());
