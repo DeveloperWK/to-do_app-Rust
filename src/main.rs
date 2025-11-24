@@ -16,7 +16,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::{
     db::{DBpool, connect_db},
-    routers::todos::todos_routes,
+    routers::{auth::auth_routes, todos::todos_routes},
 };
 
 #[derive(Debug, Clone)]
@@ -38,9 +38,6 @@ async fn main() {
         .compact()
         .with_env_filter("DEBUG,sqlx=warn")
         .init();
-    let public_routes = Router::new()
-        .route("/register", post(handlers::auth::register))
-        .route("/login", post(handlers::auth::login));
 
     let protected_routes = Router::new()
         .route("/profile", get(handlers::user::get_profile))
@@ -55,9 +52,9 @@ async fn main() {
             middlewares::auth::auth_middleware,
         ));
     let app = Router::new()
-        .nest("/auth", public_routes)
         .nest("/api", protected_routes)
         .nest("/api", todos)
+        .merge(auth_routes())
         .layer(CorsLayer::permissive())
         .with_state(state)
         .layer(TraceLayer::new_for_http());
